@@ -1,0 +1,81 @@
+body, button, input, select, textarea {
+	font-size: 16px;
+	font-family: '΢���ź�', arial, 'Hiragino Sans GB', 'Microsoft Yahei', '����', \5b8b\4f53, Tahoma, Arial, Helvetica, STHeiti;
+}
+
+html {
+	_padding-top: 100px;
+}
+
+html,body {
+	height: 100%;
+	overflow: hidden;
+}
+
+body {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+#header {
+	position: absolute;
+	top: 0;
+	width: 100%;
+	height: 100px;
+	background-color: #0CF;
+}
+
+#left {
+	position: absolute;
+	top: 100px;
+	right: auto;
+	left: 0;
+	bottom: 0;
+	width: 200px;
+	overflow: auto;
+	_height: 100%;
+	background-color: #9C0;
+}
+
+#middle {
+	position: absolute;
+	top: 100px;
+	right: auto;
+	left: 200px;
+	bottom: 0;
+	width: 500px;
+	overflow: auto;
+	_height: 100%;
+	background-color: #999;
+}
+
+.s_ipt {
+	//width: 310px;
+	height: 30px;
+	padding: 9px 7px;
+	//font: 16px arial;
+	border: 1px solid #d8d8d8;
+	border-bottom: 1px solid #ccc;
+	vertical-align: top;
+	outline: none;
+}
+
+.s_tae {
+	width: 100%;
+	height: 100%;
+	padding: 9px 7px;
+	//font: 16px arial;
+	border: 1px solid #d8d8d8;
+	border-bottom: 1px solid #ccc;
+	vertical-align: top;
+	outline: none;
+	white-space:nowrap;
+	overflow:auto;
+}
+
+input[type='button'] {
+	width:100px;
+	height:50px;
+	#margin-left:500px;
+}

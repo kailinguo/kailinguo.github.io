@@ -1,0 +1,53 @@
+.anjian_jiange{
+	height:32px;
+	float:left
+}
+.anjian_1{
+	height:29px;
+	width:26px;
+	background-color:#fff;
+	border:1px solid #CCC;
+	padding-left:4px;
+	padding-top:1px;
+	float:left;
+	margin-right:3px;
+	margin-left:3px;
+	white-space:nowrap;
+	text-overflow:ellipsis;
+	-o-text-overflow:ellipsis;
+	overflow:hidden
+}
+#anjian_dakuangjia{
+	width:872px;
+	height:250px;
+	margin-right:auto;
+	margin-left:auto;
+	margin-top:40px;
+	background-color:#323232
+}
+#anjian_dakuangjia_zuo{
+	width:834px;
+	float:left
+}
+#anjian_dakuangjia_you{
+	width:38px;
+	float:left
+}
+#anjian_dakuangjia_xia{
+	width:872px;
+	margin-right:auto;
+	margin-left:auto;
+	margin-bottom:60px
+}
+#anjian_dakuangjia_xia_zuo{
+	float:left;
+	margin-top:8px;
+	margin-left:3px;
+	color:#666
+}
+#anjian_dakuangjia_xia_you{
+	float:right;
+	margin-top:8px;
+	margin-right:3px
+}
+
