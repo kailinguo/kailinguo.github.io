@@ -1,0 +1,78 @@
+<!DOCTYPE html><html lang="en"><head><meta name="generator" content="Hexo 3.9.0"><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description"><title>图解mysql中的binlog、redo log和undo log | KailinGuo's Blog</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=0.0.0"><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/normalize/8.0.0/normalize.min.css"><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/pure/1.0.0/pure-min.css"><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/pure/1.0.0/grids-responsive-min.css"><link rel="stylesheet" href="//cdn.bootcss.com/font-awesome/4.7.0/css/font-awesome.min.css"><script type="text/javascript" src="//cdn.bootcss.com/jquery/3.3.1/jquery.min.js"></script><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">图解mysql中的binlog、redo log和undo log</h1><a id="logo" href="/.">KailinGuo's Blog</a><p class="description"></p></div><div id="nav-menu"><a class="current" href="/."><i class="fa fa-home"> Home</i></a><a href="/archives/"><i class="fa fa-archive"> Archive</i></a><a href="/about/"><i class="fa fa-user"> About</i></a><a href="/atom.xml"><i class="fa fa-rss"> RSS</i></a></div></div><div class="pure-g" id="layout"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">图解mysql中的binlog、redo log和undo log</h1><div class="post-meta">Jan 4, 2023<span> | </span><span class="category"><a href="/categories/数据库/">数据库</a></span></div><div class="post-content"><p>从一条 SQL 的执行讲起：<br><img src="/2023/01/04/04-数据库-mysql日志/01.gif" alt></p>
+<p>就算是一条简简单单的更新语句，也要经过 MySQL 的 Server 层和存储引擎层<br>InnoDB 存储引擎<br>从上面的 SQL 执行图可以看出，数据的落盘和日志的记录都与 InnoDB 存储引擎有着密切的关系。</p>
+<p>那存储引擎到底是什么呢？</p>
+<p>“引擎”一词来源于发动机，它是发动机中的核心部分，后面引申到软件工程领域，代表的是软件或者系统的核心。</p>
+<p>在 MySQL 中，核心的存储数据的模块被称为存储引擎。</p>
+<p>在 MySQL 中，存储引擎是插件式的，用户可以根据不同的需求去使用不同的存储引擎。</p>
+<p>把存储引擎插件化有什么好处呢？</p>
+<p>我认为有以下三点好处：</p>
+<p>将 Server 层与存储引擎解耦，留下扩展点，方便后续的迭代与发展<br>让用户有更多的选择，根据不同的需求选择合适的存储引擎<br>让 MySQL 便于结合更多优秀的存储引擎<br>我这三点推断并不是空穴来风，不信我和你一起回顾一下 MySQL 的发展史:</p>
+<p>MySQL 最初搭载的存储引擎是自研的只支持简单的查询的 MyISAM 的前身 ISAM</p>
+<p>后来与 Sleepycat 合作研发了 Berkeley DB 引擎，支持了事务</p>
+<p>但尽管如此，MySQL 这些自研的存储引擎在很大一部分场景都干不过 InnobaseOy 公司的 InnoDB 存储引擎。</p>
+<p>怎么办呢？打不过就加入呗。</p>
+<p>我有我的 SQL 技术，你有你的存储技术，我们何不合作共同发展呢？<br><img src="/2023/01/04/04-数据库-mysql日志/02.jpg" alt></p>
+<p>于是在 2001 年，MySQL 所在的公司和 InnobaseOy 公司合作，决定在 MySQL 中集成 InnoDB 存储引擎。</p>
+<p>因为 MySQL 存储引擎的插件化设计，两个公司合作的非常轻松与愉快，很快就发布了 MySQL4.0 正式支持功能强大的 InnoDB。</p>
+<p>虽说不能把 MySQL 的成功全部归功于存储引擎的插件化设计，但不得不说，存储引擎插件化大大加速了 MySQL 的发展。</p>
+<p>从发展史也可以了解到，InnoDB 一开始并不是 MySQL 的一部分，只是后来被集成到了 MySQL 里面。这一点很关键，后面还会再次提到。</p>
+<p>Buffer Pool<br>在 InnoDB 里，有一块非常重要的结构——Buffer Pool。</p>
+<p>Buffer Pool 是个什么东西呢？</p>
+<p>Buffer Pool 就是一个缓存磁盘数据的内存空间，将磁盘 IO 操作转换成内存操作，提高执行效率。</p>
+<p>讲白了，就是将磁盘上的数据放到内存中来，有什么操作直接在内存中执行，不需要每次都去磁盘上取数据，然后操作完后再将数据刷到磁盘。</p>
+<p>通过一个例子说明，假设要执行 3 个更新 SQL，将 age=1 这个数据依次更新成 2、3、4。</p>
+<p>如果没有 Buffer Pool，那执行就是这样的：<br><img src="/2023/01/04/04-数据库-mysql日志/03.gif" alt></p>
+<p>每次更新都需要从磁盘拿数据，修改完了需要刷到磁盘，3 次更新一共有 6 次磁盘 IO。</p>
+<p>而有了 Buffer Pool，执行就成了这样：<br><img src="/2023/01/04/04-数据库-mysql日志/04.gif" alt></p>
+<p>一共执行了 1 次 IO 操作，20 次内存操作。</p>
+<p>上面这个例子，执行 10 条 SQL，有了 Buffer Pool 之后，节省了 19 次的磁盘 IO。</p>
+<p>当然，Buffer Pool 真正的运转流程没有这么简单，具体实现细节和优化技巧还有很多，由于篇幅有限，本文不做详细描述。</p>
+<p>我们需要明白的是，Buffer Pool 就是将磁盘 IO 转换成了内存 IO，提高了执行效率。</p>
+<p>Buffer Pool 是提高了效率没错，但是出现了一个问题，Buffer Pool 存在于内存中，而只要一断电或者 MySQL 所在服务器挂掉，内存里面的数据就会全部丢失。</p>
+<p>如果断电的时候 Buffer Pool 的数据还没来得及刷到磁盘，那么这些数据就丢失了。<br><img src="/2023/01/04/04-数据库-mysql日志/05.gif" alt></p>
+<p>试想一下，如果这些丢失的数据里面有你给女神买包的订单信息，你能不能接受？</p>
+<p>反正我是不能接受。</p>
+<p>那 InnoDB 是如何做到数据不会丢失的呢？</p>
+<p>今天的第一个日志——redo log 登场了。</p>
+<p>redo log<br>从名字上面来看，redo 是重做的意思，redo log 就是重做日志的意思。</p>
+<p>具体来说，就是在修改之后，先将修改后的值记录到磁盘上的 redo log 中，就算突然断电了，Buffer Pool 中的数据全部丢失了，来电的时候也可以根据 redo log 恢复 Buffer Pool，这样既利用到了 Buffer Pool 的内存高效性，也保证了数据不会丢失。<br><img src="/2023/01/04/04-数据库-mysql日志/06.gif" alt></p>
+<p>那么问题来了，redo log 文件也在磁盘上，数据文件也在磁盘上，都是磁盘操作，何必多此一举？为什么不直接将修改的数据写到数据文件里面去呢？<br><img src="/2023/01/04/04-数据库-mysql日志/07.jpg" alt></p>
+<p>一句话回答就是：redo log 是磁盘顺序写，数据刷盘是磁盘随机写。磁盘的顺序写比随机写高效的多。</p>
+<p>所以啊，这一波先记 redo log 还是有用的。</p>
+<p>在关系数据库中，这种先预写日志后面再将数据刷盘的机制，有一个高大上的专业名词——WAL（Write-ahead logging），翻译成中文就是预写式日志。</p>
+<p>面试的时候，你要是满嘴这些高大上的名词，面试官很难不抬头打量你呀。<br><img src="/2023/01/04/04-数据库-mysql日志/08.jpg" alt></p>
+<p>言归正传，redo log 并不是直接记到磁盘的 redo log 文件里面，而是先记录在一个叫 redo log buffer 的地方，redo log buffer 和 Buffer Pool 类似，起到了一个缓冲的作用。</p>
+<p>参数 innodb_flush_log_at_trx_commit 用来控制 redo log 的刷盘策略，设置不同的值同步 redo log 的策略也是不一样的。</p>
+<p>这个参数 有 3 个值可以设置：</p>
+<p>innodb_flush_log_at_trx_commit = 0：延迟写，延迟刷<br>这种策略在事务提交时不会向磁盘中同步 redo log，这个同步的工作由后台线程定时去做。</p>
+<p>这种策略效率是最高的，但是如果事务提交后服务器挂了，后台线程又没有及时将 redo log 刷新到磁盘，那么该事务对页面的修改会丢失。<br><img src="/2023/01/04/04-数据库-mysql日志/09.gif" alt></p>
+<p>innodb_flush_log_at_trx_commit = 1：实时写，实时刷<br>这种策略会在每次事务提交之前，将对应的 redo log 刷到磁盘中去，理论上只要磁盘不出问题，数据就不会丢失。<br><img src="/2023/01/04/04-数据库-mysql日志/10.gif" alt></p>
+<p>innodb_flush_log_at_trx_commit = 2：实时写，延迟刷<br>这种策略在事务提交之前会把 redo log 写到 os cache 中，但并不会实时地将日志刷新到磁盘。</p>
+<p>这种情况下如果 MySQL 进程挂了，操作系统没挂的话，操作系统还是会将 os cache 刷到磁盘，数据不会丢失。<br><img src="/2023/01/04/04-数据库-mysql日志/11.gif" alt></p>
+<p>但如果 MySQL 所在的服务器挂掉了，也就是操作系统也挂了，那么 os cache 也会被清空，数据就丢失了。<br><img src="/2023/01/04/04-数据库-mysql日志/12.gif" alt></p>
+<p>信我，别整那么花里胡哨的，参数 innodb_flush_log_at_trx_commit 你就老老实实用默认的 1 就行了，不丢数据不背锅，非常的香。</p>
+<p>undo log<br>我们都知道，InnoDB 是支持事务的，而事务是可以回滚的。</p>
+<p>假如一个事务将 age=1 修改成了 age=2，在事务还没有提交的时候，后台线程已经将 age=2 刷入了磁盘。这个时候，不管是内存还是磁盘上，age 都变成了 2，如果事务要回滚，找不到修改之前的 age=1，无法回滚了。<br><img src="/2023/01/04/04-数据库-mysql日志/13.gif" alt></p>
+<p>那怎么办呢？</p>
+<p>很简单，把修改之前的 age=1 存起来不就行了吗，回滚的时候根据存起来的 age=1 回滚就行了。</p>
+<p>这个存修改之前的 age=1 的过程，就叫做记录 undo log。</p>
+<p>undo 翻译成中文是撤销、回滚的意思。事实上，undo log 最大的作用就是回滚。<br><img src="/2023/01/04/04-数据库-mysql日志/14.gif" alt></p>
+<p>undo log 默认存在全局表空间里面，你可以简单的理解成 undo log 也是存在一个 MySQL 的表里面，插入一条 undo log 和插入一条普通数据类似。所以，写入 undo log 的过程中同样也是要写入 redo log 的。</p>
+<p>binlog<br>undo log 记录的是修改之前的值，提供回滚的能力。</p>
+<p>redo log 记录的是修改之后的值，提供了崩溃恢复的能力。</p>
+<p>那 binlog 是干什么的呢？</p>
+<p>binlog 记录的是修改之后的值，用于归档。</p>
+<p>和 redo log 日志类似，binlog 也有着自己的刷盘策略，通过 sync_binlog 参数控制：</p>
+<p>sync_binlog = 0 ：每次提交事务前将 binlog 写入 os cache，由操作系统控制什么时候刷到磁盘<br>sync_binlog = 1 ：采用同步写磁盘的方式来写 binlog，不使用 os cache 来写 binlog<br>sync_binlog = N ：当每进行 n 次事务提交之后，调用一次 fsync 将 os cache 中的 binlog 强制刷到磁盘<br>这个时候你会问了，binlog 和 redo log 都是记录的修改之后的值，这两者有什么区别呢？记录了 redo log 可以不可以不记 binlog 呢？</p>
+<p>首先看两者的区别：</p>
+<p>binlog 是逻辑日志，记录的是对哪一个表的哪一行做了什么修改；redo log 是物理日志，记录的是对哪个数据页中的哪个记录做了什么修改，如果你还不了解数据页，你可以理解成对磁盘上的哪个数据做了修改。<br>binlog 是追加写；redo log 是循环写。<br>binlog 是 Server 层的日志；redo log 是 InnoDB 的日志。<br>但说实话，我觉得这些区别并不是 redo log 不能取代 binlog 的原因，完全可以调整 redo log 让他兼容现在 redo log 和 binlog 的能力。</p>
+<p>我认为不用 redo log 取代 binlog 最大的原因是“没必要”。</p>
+<p>为什么这么说呢？</p>
+<p>第一点，binlog 的生态已经建立起来。MySQL 系统高可用依赖的就是 binlog 复制，还有很多公司的数据分析系统，也是依赖的 binlog。像阿里巴巴的开源框架 Canal，也是基于 binlog 开发的。</p>
+<p>第二点，binlog 并不是 MySQL 的瓶颈，花时间在没有瓶颈的地方没必要。</p>
+<p>就像我们常用的 Maven，在构建速度上已经被 Gradle 完爆了，但是我们新建项目的时候还是用着 Maven，为什么呢？</p>
+<p>也是一样的道理，Maven 用的习惯了，构建慢但还没慢到影响项目开发的程度。</p>
+<p>总结<br>需要提前交代清楚的是，因为 binlog 属于 MySQL 的 Server 层，而 redo log 和 undo log 是存储引擎 InnoDB 的日志，所以全文是在 MySQL 使用了 InnoDB 存储引擎的基础上展开的。<br><img src="/2023/01/04/04-数据库-mysql日志/15.jpg" alt></p>
+<p>事实上，这三种日志还有很多细节我没有提到，我花了 6000 字 3000 帧动画想要告诉你的只有三个词：恢复、回滚、归档。<br>而这每个词都对应着一种日志：</p>
+<p>redo log——恢复<br>undo log——回滚<br>binlog——归档<br>这三种日志非常重要，是学习 MySQL 体系的基础，后面关于事务和 MVCC 的文章都会再次提到这些日志。</p>
+</div><div class="tags"></div><div class="post-nav"><a class="next" href="/2022/12/30/03-计算机基础-字符集/">聊聊ASCII、Unicode和UTF-8字符集</a></div></div></div></div><div class="pure-u-1-4 hidden_mid_and_down"><div id="sidebar"><div class="widget"><form class="search-form" action="//www.google.com/search" method="get" accept-charset="utf-8" target="_blank"><input type="text" name="q" maxlength="20" placeholder="Search"><input type="hidden" name="sitesearch" value="http://yoursite.com"></form></div><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> Categories</i></div><ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/数据库/">数据库</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/环境搭建/">环境搭建</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/算法/">算法</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/计算机基础/">计算机基础</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> Tags</i></div><div class="tagcloud"><a href="/tags/必看/" style="font-size: 15px;">必看</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> Recent</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2023/01/04/04-数据库-mysql日志/">图解mysql中的binlog、redo log和undo log</a></li><li class="post-list-item"><a class="post-list-link" href="/2022/12/30/03-计算机基础-字符集/">聊聊ASCII、Unicode和UTF-8字符集</a></li><li class="post-list-item"><a class="post-list-link" href="/2022/11/25/02-算法-lru/">Lru 最近最少使用算法</a></li><li class="post-list-item"><a class="post-list-link" href="/2022/11/25/02-算法-hash/">Hash 一致性算法</a></li><li class="post-list-item"><a class="post-list-link" href="/2022/11/11/01-环境搭建-hexo/">Hexo 环境搭建</a></li><li class="post-list-item"><a class="post-list-link" href="/2022/11/10/hello-world/">Hello World</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> Links</i></div><ul></ul><a href="https://kailinguo.github.io/cron" title="cron" target="_blank">cron</a><ul></ul><a href="https://kailinguo.github.io/keyboard" title="keyboard" target="_blank">keyboard</a></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">Copyright © 2023 <a href="/." rel="nofollow">KailinGuo's Blog.</a> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a><a rel="nofollow" target="_blank" href="https://github.com/tufu9441/maupassant-hexo"> Theme</a> by<a rel="nofollow" target="_blank" href="https://github.com/pagecho"> Cho.</a></div></div></div><a class="show" id="rocket" href="#top"></a><script type="text/javascript" src="/js/totop.js?v=0.0.0" async></script><script type="text/javascript" src="//cdn.bootcss.com/fancybox/3.3.5/jquery.fancybox.min.js" async></script><script type="text/javascript" src="/js/fancybox.js?v=0.0.0" async></script><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/fancybox/3.3.5/jquery.fancybox.min.css"><script type="text/javascript" src="/js/codeblock-resizer.js?v=0.0.0"></script><script type="text/javascript" src="/js/smartresize.js?v=0.0.0"></script></div></body></html>
